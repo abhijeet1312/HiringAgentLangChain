@@ -284,25 +284,25 @@ async def root():
         }
     }
 
-if __name__ == "__main__":
-    import uvicorn
-    # Environment variables required:
-    # AWS_BUCKET_NAME, AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_KEY, API_KEY
+# if __name__ == "__main__":
+#     import uvicorn
+#     # Environment variables required:
+#     # AWS_BUCKET_NAME, AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_KEY, API_KEY
     
-    # FIXED: Get port from environment variable (Render provides PORT)
-    port = int(os.environ.get("PORT", 8000))
+#     # FIXED: Get port from environment variable (Render provides PORT)
+#     port = int(os.environ.get("PORT", 8000))
     
-    print("Starting FastAPI server...")
-    print(f"Port: {port}")
-    print(f"Bucket: {s3_config.bucket_name}")
-    print(f"Region: {s3_config.region}")
+#     print("Starting FastAPI server...")
+#     print(f"Port: {port}")
+#     print(f"Bucket: {s3_config.bucket_name}")
+#     print(f"Region: {s3_config.region}")
     
-    uvicorn.run(
-        "model:app",  # Updated to match the filename
-        host="0.0.0.0",
-        port=port,  # FIXED: Use dynamic port from environment
-        reload=False  # FIXED: Disable reload for production
-    )
+#     uvicorn.run(
+#         "model:app",  # Updated to match the filename
+#         host="0.0.0.0",
+#         port=port,  # FIXED: Use dynamic port from environment
+#         reload=False  # FIXED: Disable reload for production
+#     )
 
 
 # #model.py
