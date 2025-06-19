@@ -28,3 +28,4 @@ pdfplumber
 docx2txt
 twilio
 librosa
+supabase
