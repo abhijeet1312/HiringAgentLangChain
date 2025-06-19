@@ -23,7 +23,9 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
-#single chain celery check krna hai
+#single chain celery check krna hai 
+# #not pass
+ 
 def send_bulk_email(recipients, job_description, current_stage, next_stage):
     import smtplib
     import os

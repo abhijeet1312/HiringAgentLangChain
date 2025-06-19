@@ -133,6 +133,9 @@ async def match(request: MatchRequest):
         print(f"Error in /match/ endpoint: {e}")  # Log error for debugging
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/jmd")
+async def jmd():
+    return "Jai mata Di"
 @app.post("/screen-candidates-from-urls/")
 async def screen_candidates_from_urls(payload: URLData):
     """
