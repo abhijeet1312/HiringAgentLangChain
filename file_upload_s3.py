@@ -28,8 +28,8 @@ class S3Config:
     def __init__(self):
         self.bucket_name = os.getenv("AWS_BUCKET_NAME")
         self.region = os.getenv("AWS_REGION", "us-east-1")
-        self.access_key = os.getenv("AWS_ACCESS_KEY")
-        self.secret_key = os.getenv("AWS_SECRET_KEY")
+        self.access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        self.secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
         
         if not all([self.bucket_name, self.access_key, self.secret_key]):
             raise ValueError("Missing required AWS credentials in environment variables")
