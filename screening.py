@@ -357,64 +357,6 @@ Schema:
     
         return voice_results
            
-          
-
-
-
-
-
-# Modified usage example
-# if __name__ == "__main__":
-#     job_description = """
-#     Senior Software Engineer - AI/ML Team
-    
-#     Requirements:
-#     - 5+ years of experience in software engineering
-#     - Proficiency in Python and experience with machine learning frameworks
-#     - Experience with large language models and natural language processing
-#     - Strong background in data structures and algorithms
-#     - Bachelor's degree in Computer Science or related field
-#     """
-    
-#     # Initialize the screening agent
-#     agent = CandidateScreeningAgent(job_description=job_description)
-    
-#     # Screen resumes
-#     resume_folder = "resumes"
-#     if os.path.exists(resume_folder):
-#         resume_paths = [os.path.join(resume_folder, f) for f in os.listdir(resume_folder) 
-#                        if f.endswith(('.pdf', '.docx', '.txt'))]
-        
-#         print(resume_paths)
-#         assessments = agent.batch_screen_candidates(resume_paths)
-        
-#         # Generate report and get qualified candidates
-#         qualified_data = agent.generate_report(assessments, voice_interview_threshold=3.0)
-        
-#         # Trigger voice interviews for qualified candidates
-#         if qualified_data['qualified_candidates']:
-#             print(f"\n{'='*50}")
-#             print("PROCEEDING TO VOICE INTERVIEWS")
-#             print(f"{'='*50}")
-            
-#             voice_results = agent.trigger_voice_interviews_for_qualified(qualified_data)
-            
-#             if voice_results:
-#                 print("\n📊 Voice Interview Results:")
-#                 print(f"Total candidates interviewed: {voice_results.get('completed_screenings', 0)}")
-#                 print(f"Qualified after voice interview: {voice_results.get('qualified_count', 0)}")
-                
-#                 # Save final results
-#                 with open('final_screening_results.json', 'w') as f:
-#                     json.dump({
-#                         'resume_screening': qualified_data,
-#                         'voice_interviews': voice_results
-#                     }, f, indent=2)
-#                 print("✅ Final results saved to final_screening_results.json")
-#         else:
-#             print("❌ No candidates qualified for voice interviews")
-#     else:
-#         print(f"Resume folder {resume_folder} not found.")
 def extract_key_info_from_resume(resume_text: str) -> Dict[str, Any]:
     """
     Extract key information from a resume
