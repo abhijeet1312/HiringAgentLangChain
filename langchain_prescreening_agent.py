@@ -161,7 +161,7 @@ class PreScreeningAgent:
         encoded_questions = urllib.parse.quote(questions_json)
         
         # Build webhook URL with questions data
-        webhook_url = f"https://c9c1-2402-e280-217b-863-68c2-3e4a-ac4f-143.ngrok-free.app/voice/{session_id}?questions={encoded_questions}&chat_id={chat_id}&candidate_id={candidate_id}"
+        webhook_url = f"https://15de-2402-e280-217b-863-4401-937-af66-85f1.ngrok-free.app/voice/{session_id}?questions={encoded_questions}&chat_id={chat_id}&candidate_id={candidate_id}"
         
         # Initiate Twilio call
         call = client.calls.create(
@@ -292,7 +292,7 @@ class PreScreeningAgent:
             return 0.0
     
 #    
-    def wait_for_responses(self, session_id: str, num_questions: int, timeout: int = 300, webhook_base_url: str = "https://c9c1-2402-e280-217b-863-68c2-3e4a-ac4f-143.ngrok-free.app"):
+    def wait_for_responses(self, session_id: str, num_questions: int, timeout: int = 300, webhook_base_url: str = "https://15de-2402-e280-217b-863-4401-937-af66-85f1.ngrok-free.app"):
        """Wait for webhook responses by calling API endpoints instead of reading files."""
        import requests
        import time
