@@ -3,8 +3,6 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from typing import List, Optional
 from pydantic import BaseModel
-import boto3
-from botocore.exceptions import ClientError, NoCredentialsError
 import tempfile
 import os
 import json as json_lib
@@ -28,17 +26,6 @@ load_dotenv()
 TEMP_DIR = Path("temp_resumes")
 TEMP_DIR.mkdir(exist_ok=True)
 
-# ---------- AWS S3 Client ----------
-try:
-    s3_client = boto3.client(
-        's3',
-        aws_access_key_id=os.getenv('AWS_ACCESS_KEY'),
-        aws_secret_access_key=os.getenv('AWS_SECRET_KEY'),
-        region_name=os.getenv('AWS_REGION', 'ap-south-1')
-    )
-except NoCredentialsError:
-    print("AWS credentials not found.")
-    s3_client = None
 
 # ---------- Request Model ----------
 class URLData(BaseModel):

@@ -3,9 +3,7 @@ import json
 from fastapi import FastAPI, HTTPException, File, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
 from huggingface_hub import InferenceClient
 import os
 from fastapi.middleware.cors import CORSMiddleware
@@ -13,15 +11,6 @@ from dotenv import load_dotenv
 from typing import List, Optional
 print("jai mata di")
 
-# # Import the S3 functionality from file_upload_s3
-# from file_upload_s3 import (
-#     # validate_pdf_file, 
-#     upload_file_to_s3, 
-#     delete_file_from_s3, 
-#     s3_config,
-#     ResumeUploadResponse,
-#     JobDescriptionUploadResponse
-# )
 from azurestorage import (
     delete_file_from_azure,
     upload_file_to_azure,
