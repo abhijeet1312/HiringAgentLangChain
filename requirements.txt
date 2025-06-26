@@ -13,7 +13,9 @@ langchain
 langchain_community
 langchain_google_genai
 langchain-huggingface
-whisper
+# whisper
+git+https://github.com/openai/whisper.git
+
 
 
 # Data processing
