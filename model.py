@@ -10,6 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from typing import List, Optional
 print("jai mata di")
+import whisper
+print("✅ Whisper module path:", whisper.__file__)
+
 
 from azurestorage import (
     delete_file_from_azure,
