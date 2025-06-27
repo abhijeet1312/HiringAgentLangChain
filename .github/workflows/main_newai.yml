@@ -20,10 +20,14 @@ jobs:
         with:
           python-version: "3.10"
 
+      # === Added: Aggressive disk cleanup before install ===
       - name: Clean up disk space before install
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          sudo du -sh /usr/* | sort -h
           df -h
+        # ^^^ Added disk cleanup, apt cache clean, and disk usage check
 
       - name: Create and start virtual environment
         run: |
@@ -31,7 +35,8 @@ jobs:
           source venv/bin/activate
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install --upgrade pip && pip install -r requirements.txt
+        # ^^^ Added pip upgrade to minimize compatibility issues
 
       # Optional: Add step to run tests here (PyTest, Django test suites, etc.)
 
@@ -54,11 +59,15 @@ jobs:
       id-token: write #This is required for requesting the JWT
       contents: read #This is required for actions/checkout
 
+    # === Added: Disk cleanup before deploy ===
     steps:
       - name: Clean up disk space before deploy
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+          sudo du -sh /usr/* | sort -h
           df -h
+        # ^^^ Added disk cleanup, apt cache clean, and disk usage check
 
       - name: Download artifact from build job
         uses: actions/download-artifact@v4
