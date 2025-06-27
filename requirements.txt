@@ -23,7 +23,11 @@ pandas
 numpy
 pypdf
 docx2txt
-pdfplumber
+
+pdfminer.six 
+PyPDF2
+chardet 
+
 
 # Environment and configuration
 python-dotenv

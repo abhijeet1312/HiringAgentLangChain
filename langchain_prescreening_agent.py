@@ -39,7 +39,7 @@ class PreScreeningAgent:
             api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
-        self.whisper_model = whisper.load_model("base")  # Free transcription
+        self.whisper_model = whisper.load_model("tiny")  # Free transcription
         # Initialize Whisper with fallback
         # self.whisper_model = self._init_whisper_model()
         self.memory = ConversationBufferMemory(memory_key="chat_history")

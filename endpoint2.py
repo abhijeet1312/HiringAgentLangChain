@@ -178,75 +178,355 @@ async def screen_candidates_from_urls_logic(payload: URLData):
 
 
 
+
+# def extract_text_from_azure(blob_path: str) -> str:
+#     """
+#     Extract text from PDF/Word/Text stored in Azure Blob Storage.
+#     :param blob_path: The blob path inside the container (e.g., 'resumes/file.pdf')
+#     """
+#     try:
+#         print(f"Fetching blob from Azure: {azure_config.container_name}/{blob_path}")
+#         blob_client = azure_config.container_client.get_blob_client(blob_path)
+#         blob_data = blob_client.download_blob().readall()
+
+#         # Guess content type from file extension
+#         if blob_path.lower().endswith('.pdf'):
+#             try:
+#                 import pdfplumber
+#                 with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+#                     temp_file.write(blob_data)
+#                     temp_file_path = temp_file.name
+
+#                 with pdfplumber.open(temp_file_path) as pdf:
+#                     text = ""
+#                     for page in pdf.pages:
+#                         text += page.extract_text() or ""
+
+#                 os.remove(temp_file_path)
+#                 return text
+
+#             except ImportError:
+#                 raise HTTPException(
+#                     status_code=500,
+#                     detail="pdfplumber not installed. Install it using: pip install pdfplumber"
+#                 )
+
+#         elif blob_path.lower().endswith('.txt'):
+#             return blob_data.decode('utf-8')
+
+#         elif blob_path.lower().endswith(('.doc', '.docx')):
+#             try:
+#                 import docx2txt
+#                 with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+#                     temp_file.write(blob_data)
+#                     temp_file_path = temp_file.name
+
+#                 text = docx2txt.process(temp_file_path)
+#                 os.remove(temp_file_path)
+#                 return text
+
+#             except ImportError:
+#                 raise HTTPException(
+#                     status_code=500,
+#                     detail="docx2txt not installed. Install it using: pip install docx2txt"
+#                 )
+
+#         # Fallback decode attempt
+#         else:
+#             try:
+#                 return blob_data.decode('utf-8')
+#             except UnicodeDecodeError:
+#                 raise HTTPException(
+#                     status_code=400,
+#                     detail=f"Unsupported or non-text file type for Azure blob: {blob_path}"
+#                 )
+
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to extract text from Azure blob {blob_path}: {str(e)}"
+#         )
+
+import tempfile
+import os
+import re
+from urllib.parse import unquote
+from fastapi import HTTPException
+
 def extract_text_from_azure(blob_path: str) -> str:
     """
-    Extract text from PDF/Word/Text stored in Azure Blob Storage.
+    Extract text from PDF/Word/Text stored in Azure Blob Storage with improved handling.
     :param blob_path: The blob path inside the container (e.g., 'resumes/file.pdf')
     """
     try:
-        print(f"Fetching blob from Azure: {azure_config.container_name}/{blob_path}")
-        blob_client = azure_config.container_client.get_blob_client(blob_path)
+        # Decode URL-encoded characters in the blob path
+        decoded_blob_path = unquote(blob_path)
+        print(f"Original blob path: {blob_path}")
+        print(f"Decoded blob path: {decoded_blob_path}")
+        print(f"Fetching blob from Azure: {azure_config.container_name}/{decoded_blob_path}")
+        
+        blob_client = azure_config.container_client.get_blob_client(decoded_blob_path)
         blob_data = blob_client.download_blob().readall()
-
-        # Guess content type from file extension
-        if blob_path.lower().endswith('.pdf'):
-            try:
-                import pdfplumber
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-                    temp_file.write(blob_data)
-                    temp_file_path = temp_file.name
-
-                with pdfplumber.open(temp_file_path) as pdf:
-                    text = ""
-                    for page in pdf.pages:
-                        text += page.extract_text() or ""
-
-                os.remove(temp_file_path)
-                return text
-
-            except ImportError:
-                raise HTTPException(
-                    status_code=500,
-                    detail="pdfplumber not installed. Install it using: pip install pdfplumber"
-                )
-
-        elif blob_path.lower().endswith('.txt'):
-            return blob_data.decode('utf-8')
-
-        elif blob_path.lower().endswith(('.doc', '.docx')):
-            try:
-                import docx2txt
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
-                    temp_file.write(blob_data)
-                    temp_file_path = temp_file.name
-
-                text = docx2txt.process(temp_file_path)
-                os.remove(temp_file_path)
-                return text
-
-            except ImportError:
-                raise HTTPException(
-                    status_code=500,
-                    detail="docx2txt not installed. Install it using: pip install docx2txt"
-                )
-
-        # Fallback decode attempt
+        
+        # Extract text based on file type
+        if decoded_blob_path.lower().endswith('.pdf'):
+            text = extract_pdf_text(blob_data)
+        elif decoded_blob_path.lower().endswith('.txt'):
+            text = extract_txt_text(blob_data)
+        elif decoded_blob_path.lower().endswith(('.doc', '.docx')):
+            text = extract_docx_text(blob_data)
         else:
+            # Fallback decode attempt
             try:
-                return blob_data.decode('utf-8')
+                text = blob_data.decode('utf-8')
             except UnicodeDecodeError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported or non-text file type for Azure blob: {blob_path}"
-                )
-
+                # Try different encodings
+                for encoding in ['latin-1', 'cp1252', 'iso-8859-1']:
+                    try:
+                        text = blob_data.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unable to decode file: {decoded_blob_path}"
+                    )
+        
+        # Clean and normalize the extracted text
+        cleaned_text = clean_extracted_text(text)
+        return cleaned_text
+        
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to extract text from Azure blob {blob_path}: {str(e)}"
+            detail=f"Failed to extract text from Azure blob {decoded_blob_path if 'decoded_blob_path' in locals() else blob_path}: {str(e)}"
         )
 
+def extract_pdf_text(blob_data: bytes) -> str:
+    """Extract text from PDF using multiple methods in order of preference."""
+    extraction_methods = [
+        ("pdfminer.six (simple)", extract_pdf_with_pdfminer),
+        ("pdfminer.six (advanced)", extract_pdf_with_pdfminer_advanced),
+        ("PyPDF2 (fallback)", extract_pdf_with_pypdf2)
+    ]
     
+    for method_name, method_func in extraction_methods:
+        try:
+            print(f"Trying {method_name}...")
+            text = method_func(blob_data)
+            
+            # Check if extraction was successful
+            if text and text.strip() and len(text.strip()) > 10:
+                print(f"Successfully extracted text using {method_name}")
+                return text
+            else:
+                print(f"{method_name} returned empty or insufficient text")
+                
+        except ImportError as e:
+            print(f"{method_name} not available: {str(e)}")
+            continue
+        except Exception as e:
+            print(f"{method_name} failed: {str(e)}")
+            continue
+    
+    # If all methods fail
+    raise HTTPException(
+        status_code=500,
+        detail="All PDF extraction methods failed. Please check if the PDF is valid and readable."
+    )
+
+def extract_pdf_with_pdfminer(blob_data: bytes) -> str:
+    """Extract text using pdfminer.six - primary method."""
+    try:
+        from pdfminer.high_level import extract_text
+        from pdfminer.layout import LAParams
+        import io
+        
+        # Create layout parameters for better text extraction
+        laparams = LAParams(
+            boxes_flow=0.5,      # Controls how text boxes are grouped
+            word_margin=0.1,     # Word separation threshold
+            char_margin=2.0,     # Character separation threshold
+            line_margin=0.5,     # Line separation threshold
+            detect_vertical=False # Don't detect vertical text
+        )
+        
+        # Extract text with custom parameters
+        text = extract_text(
+            io.BytesIO(blob_data),
+            laparams=laparams,
+            maxpages=0,          # Process all pages
+            password="",         # No password
+            caching=True         # Enable caching for performance
+        )
+        
+        return text
+        
+    except ImportError:
+        raise ImportError("pdfminer.six not installed")
+    except Exception as e:
+        print(f"pdfminer extraction failed: {str(e)}")
+        return ""
+
+def extract_pdf_with_pdfminer_advanced(blob_data: bytes) -> str:
+    """Advanced pdfminer extraction with more control - alternative method."""
+    try:
+        from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+        from pdfminer.pdfpage import PDFPage
+        from pdfminer.converter import TextConverter
+        from pdfminer.layout import LAParams
+        import io
+        
+        # Set up PDF processing
+        rsrcmgr = PDFResourceManager()
+        output_string = io.StringIO()
+        
+        # Configure layout parameters for resume parsing
+        laparams = LAParams(
+            boxes_flow=0.5,
+            word_margin=0.1,
+            char_margin=2.0,
+            line_margin=0.5,
+            detect_vertical=False,
+            all_texts=False
+        )
+        
+        device = TextConverter(rsrcmgr, output_string, laparams=laparams)
+        interpreter = PDFPageInterpreter(rsrcmgr, device)
+        
+        # Process each page
+        for page in PDFPage.get_pages(
+            io.BytesIO(blob_data),
+            caching=True
+        ):
+            interpreter.process_page(page)
+        
+        text = output_string.getvalue()
+        device.close()
+        output_string.close()
+        
+        return text
+        
+    except ImportError:
+        raise ImportError("pdfminer.six not installed")
+    except Exception as e:
+        print(f"Advanced pdfminer extraction failed: {str(e)}")
+        return ""
+
+def extract_pdf_with_pypdf2(blob_data: bytes) -> str:
+    """Fallback PDF extraction using PyPDF2."""
+    try:
+        import PyPDF2
+        import io
+        
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(blob_data))
+        text = ""
+        for page in pdf_reader.pages:
+            text += page.extract_text() + "\n"
+        return text
+    except ImportError:
+        return ""
+
+def extract_txt_text(blob_data: bytes) -> str:
+    """Extract text from TXT files with encoding detection."""
+    # Try multiple encodings
+    for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
+        try:
+            return blob_data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    
+    # If all encodings fail, use errors='ignore'
+    return blob_data.decode('utf-8', errors='ignore')
+
+def extract_docx_text(blob_data: bytes) -> str:
+    """Extract text from DOCX files."""
+    try:
+        import docx2txt
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+            temp_file.write(blob_data)
+            temp_file_path = temp_file.name
+        
+        text = docx2txt.process(temp_file_path)
+        os.remove(temp_file_path)
+        return text
+        
+    except ImportError:
+        raise HTTPException(
+            status_code=500,
+            detail="docx2txt not installed. Install it using: pip install docx2txt"
+        )
+
+def clean_extracted_text(text: str) -> str:
+    """Clean and normalize extracted text for better parsing."""
+    if not text:
+        return ""
+    
+    # Replace problematic Unicode characters with ASCII equivalents
+    replacements = {
+        '•': '- ',           # Bullet point
+        '◦': '- ',           # White bullet
+        '§': '',             # Section sign
+        'ï': '',             # Various accented characters
+        '–': '-',            # En dash
+        '—': '-',            # Em dash
+        ''': "'",            # Smart quotes
+        ''': "'",
+        '"': '"',
+        '"': '"',
+        '…': '...',          # Ellipsis
+        '\u00a0': ' ',       # Non-breaking space
+        '\u2022': '- ',      # Bullet point
+        '\u25e6': '- ',      # White bullet
+        '\u2013': '-',       # En dash
+        '\u2014': '-',       # Em dash
+        '\ufb01': 'fi',      # fi ligature - THIS IS THE KEY FIX
+        '\ufb02': 'fl',      # fl ligature
+        '\ufb03': 'ffi',     # ffi ligature
+        '\ufb04': 'ffl',     # ffl ligature
+        '\u2018': "'",       # Left single quote
+        '\u2019': "'",       # Right single quote
+        '\u201c': '"',       # Left double quote
+        '\u201d': '"',       # Right double quote
+    }
+    
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    
+    # Remove extra whitespace and normalize line breaks
+    text = re.sub(r'\s+', ' ', text)  # Replace multiple spaces with single space
+    text = re.sub(r'\n\s*\n', '\n\n', text)  # Normalize paragraph breaks
+    text = text.strip()
+    
+    # Final cleanup - remove any remaining problematic characters
+    text = text.encode('utf-8', errors='ignore').decode('utf-8')
+    
+    # Ensure text is not empty after cleaning
+    if not text or len(text.strip()) < 10:
+        raise ValueError("Extracted text is empty or too short after cleaning")
+    
+    return text
+
+# Additional helper function for debugging
+def debug_text_extraction(blob_path: str) -> dict:
+    """Debug function to analyze text extraction issues."""
+    try:
+        blob_client = azure_config.container_client.get_blob_client(blob_path)
+        blob_data = blob_client.download_blob().readall()
+        
+        # Try to detect encoding
+        import chardet
+        detected = chardet.detect(blob_data[:1000])  # Check first 1000 bytes
+        
+        return {
+            "file_size": len(blob_data),
+            "detected_encoding": detected,
+            "first_100_chars": str(blob_data[:100]),
+            "file_extension": blob_path.split('.')[-1].lower()
+        }
+    except Exception as e:
+        return {"error": str(e)}
     
     
 
@@ -270,14 +550,18 @@ async def cleanup_azure_files_after_processing(azure_objects: list) -> dict:
 
             container = azure_obj['container']
             blob_path = azure_obj['blob_path']
-
+            
+            # Decode URL-encoded characters in the blob path (KEY FIX)
+            decoded_blob_path = unquote(blob_path)
+            print(f"Original blob path: {blob_path}")
+            print(f"Decoded blob path: {decoded_blob_path}")
             blob_service_client = azure_config.blob_service_client.from_connection_string(azure_config.connection_string)
             container_client = blob_service_client.get_container_client(container)
-            blob_client = container_client.get_blob_client(blob_path)
+            blob_client = container_client.get_blob_client(decoded_blob_path)
 
             blob_client.delete_blob()
 
-            print(f"Deleted {blob_path} from container {container}")
+            print(f"Deleted {decoded_blob_path} from container {container}")
             cleanup_results["successfully_deleted"] += 1
 
         except Exception as e:
