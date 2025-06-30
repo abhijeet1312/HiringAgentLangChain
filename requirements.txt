@@ -13,6 +13,10 @@ langchain
 langchain_community
 langchain_google_genai
 langchain-huggingface
+# Force CPU-only PyTorch
+torch==2.3.0+cpu
+torchaudio==2.3.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu
 # whisper
 git+https://github.com/openai/whisper.git
 

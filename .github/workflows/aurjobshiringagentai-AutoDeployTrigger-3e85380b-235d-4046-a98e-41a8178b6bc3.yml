@@ -1,28 +1,20 @@
-name: Trigger auto deployment for aurjobshiringagentai
+name: Deploy FastAPI to Azure Container Apps (ACR Container-Based)
 
-# When this action will be executed
 on:
-  # Automatically trigger it when detected changes in repo
   push:
-    branches: 
-      [ main ]
-    paths:
-    - '**'
-    - '.github/workflows/aurjobshiringagentai-AutoDeployTrigger-3e85380b-235d-4046-a98e-41a8178b6bc3.yml'
-
-  # Allow manual trigger 
-  workflow_dispatch:      
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    permissions: 
-      id-token: write #This is required for requesting the OIDC JWT Token
-      contents: read #Required when GH token is used to authenticate with private repo
+    permissions:
+      id-token: write # Required for OIDC JWT Token
+      contents: read # Required when GH token is used to authenticate with private repo
 
     steps:
       - name: Checkout to the branch
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Azure Login
         uses: azure/login@v1
@@ -31,18 +23,60 @@ jobs:
           tenant-id: ${{ secrets.AURJOBSHIRINGAGENTAI_AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AURJOBSHIRINGAGENTAI_AZURE_SUBSCRIPTION_ID }}
 
-      - name: Build and push container image to registry
+      # Method 1: Using azure/container-apps-deploy-action with ACR build
+      - name: Build and Deploy to Container Apps via ACR
         uses: azure/container-apps-deploy-action@v2
         with:
           appSourcePath: ${{ github.workspace }}
-          _dockerfilePathKey_: _dockerfilePath_
-          registryUrl: 
-          registryUsername: ${{ secrets.AURJOBSHIRINGAGENTAI_REGISTRY_USERNAME }}
-          registryPassword: ${{ secrets.AURJOBSHIRINGAGENTAI_REGISTRY_PASSWORD }}
+          acrName: aurjobsairegistry
           containerAppName: aurjobshiringagentai
           resourceGroup: Aurjobs
-          imageToBuild: default/[parameters('containerAppName')]:${{ github.sha }}
-          _buildArgumentsKey_: |
-            _buildArgumentsValues_
+          dockerfilePath: ./Dockerfile
+          imageToBuild: aurjobshiringagentai:${{ github.sha }}
+# name: Trigger auto deployment for aurjobshiringagentai
 
+# # When this action will be executed
+# on:
+#   # Automatically trigger it when detected changes in repo
+#   push:
+#     branches:
+#       [ main ]
+#     paths:
+#     - '**'
+#     - '.github/workflows/aurjobshiringagentai-AutoDeployTrigger-3e85380b-235d-4046-a98e-41a8178b6bc3.yml'
+
+#   # Allow manual trigger
+#   workflow_dispatch:
+
+# jobs:
+#   build-and-deploy:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       id-token: write #This is required for requesting the OIDC JWT Token
+#       contents: read #Required when GH token is used to authenticate with private repo
+
+#     steps:
+#       - name: Checkout to the branch
+#         uses: actions/checkout@v2
+
+#       - name: Azure Login
+#         uses: azure/login@v1
+#         with:
+#           client-id: ${{ secrets.AURJOBSHIRINGAGENTAI_AZURE_CLIENT_ID }}
+#           tenant-id: ${{ secrets.AURJOBSHIRINGAGENTAI_AZURE_TENANT_ID }}
+#           subscription-id: ${{ secrets.AURJOBSHIRINGAGENTAI_AZURE_SUBSCRIPTION_ID }}
+
+#       - name: Build and push container image to registry
+#         uses: azure/container-apps-deploy-action@v2
+#         with:
+#           appSourcePath: ${{ github.workspace }}
+#           _dockerfilePathKey_: _dockerfilePath_
+#           registryUrl:
+#           registryUsername: ${{ secrets.AURJOBSHIRINGAGENTAI_REGISTRY_USERNAME }}
+#           registryPassword: ${{ secrets.AURJOBSHIRINGAGENTAI_REGISTRY_PASSWORD }}
+#           containerAppName: aurjobshiringagentai
+#           resourceGroup: Aurjobs
+#           imageToBuild: default/[parameters('containerAppName')]:${{ github.sha }}
+#           _buildArgumentsKey_: |
+#             _buildArgumentsValues_
 
