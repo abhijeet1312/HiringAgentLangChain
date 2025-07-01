@@ -26,7 +26,7 @@ docx2txt
 pdfminer.six 
 PyPDF2
 chardet 
-
+openai>=1.0.0
 
 # Environment and configuration
 python-dotenv
