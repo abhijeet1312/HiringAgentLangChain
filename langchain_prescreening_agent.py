@@ -1,12 +1,12 @@
-# ai_agent.py
+
+# Modified PreScreeningAgent class with Azure OpenAI Whisper
+
 from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent
 from langchain.prompts import StringPromptTemplate
-#
 from langchain_community.chat_models import ChatOllama
 import traceback
 from langchain.chains import LLMChain
 from langchain.agents.output_parsers import ReActSingleInputOutputParser
-
 from langchain_google_genai import ChatGoogleGenerativeAI
 import warnings
 from requests.auth import HTTPBasicAuth
@@ -15,33 +15,40 @@ import os
 from twilio.rest import Client
 from supabase_client import supabase
 
-#celery c
-#candidate response time kam hona chahiye particular response time
-#limit the response for questions
+# Azure OpenAI imports
+from openai import AzureOpenAI
+import tempfile
+
 from langchain.schema import AgentAction, AgentFinish
 from langchain.memory import ConversationBufferMemory
 import requests
-import whisper
 import json
 import time
 from typing import List, Dict, Any
 from dotenv import load_dotenv
 import urllib.parse
+import io
 load_dotenv()
-import os
+
 class PreScreeningAgent:
     def __init__(self):
-        # Initialize free tools
-        # self.llm = ChatOllama(model="mistral")  # Free local Mistral
+        # Initialize LLM
         self.llm = ChatGoogleGenerativeAI(
             model="models/gemini-2.0-flash",
-            
             api_key=os.getenv("GOOGLE_API_KEY"),
             temperature=0.1
         )
-        self.whisper_model = whisper.load_model("tiny")  # Free transcription
-        # Initialize Whisper with fallback
-        # self.whisper_model = self._init_whisper_model()
+        
+        # Initialize Azure OpenAI client for Whisper
+        self.azure_openai_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
+            api_version="2024-02-01",
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
+        )
+        
+        # Your Whisper deployment name in Azure OpenAI
+        self.whisper_deployment_id = os.getenv("AZURE_WHISPER_DEPLOYMENT", "whisper-1")
+        
         self.memory = ConversationBufferMemory(memory_key="chat_history")
         
         # Setup tools
@@ -65,7 +72,6 @@ class PreScreeningAgent:
         
         # Create agent
         self.agent = self._create_agent()
-    
     def _create_agent(self):
         prompt_template = """
         You are an AI recruitment assistant specializing in candidate pre-screening.
@@ -192,65 +198,127 @@ class PreScreeningAgent:
         return {"success": False, "error": f"Failed to initiate call: {str(e)}"}
     
     def transcribe_audio(self, audio_url: str) -> str:
-       """Transcribe audio without creating temporary files"""
-       print("Starting audio transcription...")
-    
-       try:
-        # Validate URL
-        import librosa
-        import numpy as np
-        import os
-        import io
-        if not audio_url.startswith("http"):
-            raise ValueError(f"Invalid audio URL: {audio_url}")
+        """Transcribe audio using Azure OpenAI Whisper API"""
+        print("Starting audio transcription with Azure OpenAI...")
+        
+        try:
+            # Validate URL
+            if not audio_url.startswith("http"):
+                raise ValueError(f"Invalid audio URL: {audio_url}")
 
-        # Download audio data
-        print("Downloading audio...")
-        audio_response = requests.get(
-            audio_url,
-            auth=HTTPBasicAuth(
-                os.getenv("TWILIO_ACCOUNT_SID"), 
-                os.getenv("TWILIO_AUTH_TOKEN")
+            # Download audio data
+            print("Downloading audio...")
+            time.sleep(10)
+            audio_response = requests.get(
+                audio_url,
+                auth=HTTPBasicAuth(
+                    os.getenv("TWILIO_ACCOUNT_SID"), 
+                    os.getenv("TWILIO_AUTH_TOKEN")
+                )
             )
-        )
+            
+            if audio_response.status_code != 200:
+                raise ValueError(f"Failed to download audio: {audio_response.status_code}")
+
+            # Check if we got valid audio data
+            audio_content = audio_response.content
+            if len(audio_content) < 100:
+                raise ValueError(f"Audio data too small ({len(audio_content)} bytes) - likely corrupted or empty")
+
+            print(f"📊 Downloaded {len(audio_content)} bytes of audio data")
+
+            # # Create a temporary file for Azure OpenAI API
+            # with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio_file:
+            #     temp_audio_file.write(audio_content)
+            #     temp_audio_file_path = temp_audio_file.name
+            # Create BytesIO object instead of temporary file
+            audio_buffer = io.BytesIO(audio_content)
+            audio_buffer.name = "audio.wav"  # Required for OpenAI API
+            
+
+            try:
+                # Transcribe using Azure OpenAI Whisper
+                print("🎤 Transcribing audio with Azure OpenAI...")
+                
+                # with open(temp_audio_file_path, "rb") as audio_file:
+                result = self.azure_openai_client.audio.transcriptions.create(
+                        file=audio_buffer,
+                        model=self.whisper_deployment_id,
+                        language="en"  # Optional: specify language
+                    )
+                
+                print("✅ Transcription completed successfully!")
+                return result.text.strip()
+            except Exception as e:
+                print(f"❌ Azure OpenAI transcription error: {e}")
+                print(f"Error type: {type(e).__name__}")
+                return ""
+                             
+        except Exception as e:
+            print(f"❌ Transcription error: {e}")
+            print(f"Error type: {type(e).__name__}")
+            return ""
+
+    # def transcribe_audio(self, audio_url: str) -> str:
+    #    """Transcribe audio without creating temporary files"""
+    #    print("Starting audio transcription...")
+    
+    #    try:
+    #     # Validate URL
+    #     import librosa
+    #     import numpy as np
+    #     import os
+    #     import io
+    #     if not audio_url.startswith("http"):
+    #         raise ValueError(f"Invalid audio URL: {audio_url}")
+
+    #     # Download audio data
+    #     print("Downloading audio...")
+    #     audio_response = requests.get(
+    #         audio_url,
+    #         auth=HTTPBasicAuth(
+    #             os.getenv("TWILIO_ACCOUNT_SID"), 
+    #             os.getenv("TWILIO_AUTH_TOKEN")
+    #         )
+    #     )
         
-        if audio_response.status_code != 200:
-            raise ValueError(f"Failed to download audio: {audio_response.status_code}")
+    #     if audio_response.status_code != 200:
+    #         raise ValueError(f"Failed to download audio: {audio_response.status_code}")
 
-        # Check if we got valid audio data
-        audio_content = audio_response.content
-        if len(audio_content) < 100:
-            raise ValueError(f"Audio data too small ({len(audio_content)} bytes) - likely corrupted or empty")
+    #     # Check if we got valid audio data
+    #     audio_content = audio_response.content
+    #     if len(audio_content) < 100:
+    #         raise ValueError(f"Audio data too small ({len(audio_content)} bytes) - likely corrupted or empty")
 
-        print(f"📊 Downloaded {len(audio_content)} bytes of audio data")
+    #     print(f"📊 Downloaded {len(audio_content)} bytes of audio data")
 
-        # Process audio directly in memory using BytesIO
-        print("🎵 Processing audio in memory...")
+    #     # Process audio directly in memory using BytesIO
+    #     print("🎵 Processing audio in memory...")
         
-        # Create a file-like object from the audio bytes
-        audio_buffer = io.BytesIO(audio_content)
+    #     # Create a file-like object from the audio bytes
+    #     audio_buffer = io.BytesIO(audio_content)
         
-        # Load audio with librosa directly from memory
-        # librosa can handle BytesIO objects
-        audio_data, sample_rate = librosa.load(audio_buffer, sr=16000)  # Whisper expects 16kHz
+    #     # Load audio with librosa directly from memory
+    #     # librosa can handle BytesIO objects
+    #     audio_data, sample_rate = librosa.load(audio_buffer, sr=16000)  # Whisper expects 16kHz
         
-        print(f"✅ Audio loaded: {len(audio_data)} samples at {sample_rate}Hz")
+    #     print(f"✅ Audio loaded: {len(audio_data)} samples at {sample_rate}Hz")
 
-        # Ensure whisper_model is properly initialized
-        if not hasattr(self, 'whisper_model') or self.whisper_model is None:
-            raise AttributeError("Whisper model not initialized")
+    #     # Ensure whisper_model is properly initialized
+    #     if not hasattr(self, 'whisper_model') or self.whisper_model is None:
+    #         raise AttributeError("Whisper model not initialized")
 
-        # Transcribe using the numpy array directly
-        print("🎤 Transcribing audio...")
-        result = self.whisper_model.transcribe(audio_data)
+    #     # Transcribe using the numpy array directly
+    #     print("🎤 Transcribing audio...")
+    #     result = self.whisper_model.transcribe(audio_data)
         
-        print("✅ Transcription completed successfully!")
-        return result["text"].strip()
+    #     print("✅ Transcription completed successfully!")
+    #     return result["text"].strip()
 
-       except Exception as e:
-        print(f"❌ Transcription error: {e}")
-        print(f"Error type: {type(e).__name__}")
-        return ""
+    #    except Exception as e:
+    #     print(f"❌ Transcription error: {e}")
+    #     print(f"Error type: {type(e).__name__}")
+    #     return ""
 
       
     def evaluate_answer(self, question: str, answer: str) -> float:
