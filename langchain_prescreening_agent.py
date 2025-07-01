@@ -123,6 +123,7 @@ class PreScreeningAgent:
     def generate_screening_questions(self, job_description: str) -> List[str]:
         
         """Generate job-specific screening questions using free local LLM"""
+        
         prompt = f"""
         Generate exactly 2 specific screening questions for this job:
         
@@ -154,9 +155,13 @@ class PreScreeningAgent:
       client = Client(account_sid, auth_token)
     
       candidate_id = candidate.get("id")
-    #   candidate_phone = candidate.get("phone", "+918887596182")
-      candidate_phone = "+918887596182"
-    
+      candidate_phone1 = candidate.get("phone")
+    #   candidate_phone1="8887596182"
+      if candidate_phone1 and not candidate_phone1.startswith("+91"):
+        candidate_phone1="+91"+candidate_phone1
+      
+    #   candidate_phone = "8887596182"
+      candidate_phone = candidate_phone1
       if not candidate_id or not candidate_phone:
         return {"success": False, "error": "Candidate ID or phone missing"}
     
@@ -173,7 +178,7 @@ class PreScreeningAgent:
         
         # Initiate Twilio call
         call = client.calls.create(
-            from_="+17178825763",
+            from_="+18508459228",
             to=candidate_phone,
             url=webhook_url,
             timeout=30,

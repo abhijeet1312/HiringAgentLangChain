@@ -48,6 +48,7 @@ class CandidateAssessment(BaseModel):
     weaknesses: List[str] = Field(description="List of candidate's key weaknesses")
     recommendation: str = Field(description="Short recommendation: 'Strong Match', 'Potential Match', or 'Not Recommended'")
     candidate_email:str = Field("The email of the candidate")
+    candidate_phone: str = Field(default=None, description="The phone number of the candidate, if available")
     
     @field_validator('skills_match_score', 'experience_relevance_score', 'education_match_score', 'overall_fit_score')
     def score_must_be_valid(cls, v):
@@ -84,9 +85,14 @@ class CandidateScreeningAgent:
         )
 
         self.output_parser = PydanticOutputParser(pydantic_object=CandidateAssessment)
+         
 
     
-  
+    def extract_phone_number(self, text: str) -> Optional[str]:
+       """Extract phone number from text"""
+       phone_pattern = r'\b(?:\+\d{1,3}\s?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b'
+       phone_matches = re.findall(phone_pattern, text)
+       return phone_matches[0] if phone_matches else None
     def load_resume(self, file_path: str) -> str:
         """
         Load and extract text from a resume file
@@ -148,6 +154,7 @@ Schema:
   "weaknesses": [string],
   "recommendation": "Strong Match" | "Potential Match" | "Not Recommended",
   "candidate_email": "string"
+  "candidate_phone": "string"  # Optional, can be null
 }}
 """
 
@@ -289,7 +296,8 @@ Schema:
                     "name": row['candidate_name'],
                     "email": row['candidate_email'],
                     # "phone": self.extract_phone_number(row.get('candidate_email', '')),  # You'll need to implement this
-                    "phone":"+918887596182",
+                    "phone": row.get('candidate_phone', None),
+                    # "phone":"+918887596182",
                     "resume_score": row['overall_fit_score'],
                     "recommendation": row.get('recommendation', ''),
                     "strengths": row.get('strengths', []),
@@ -350,8 +358,9 @@ Schema:
         "candidates": qualified_data['qualified_candidates'],
         "job_description": self.job_description
          }
+        # print(voice_input)
     
-    # Run voice interviews
+        # Run voice interviews
         print("📞 Initiating voice interviews...")
         voice_results = voice_agent.run_pre_screening(json.dumps(voice_input))
     
