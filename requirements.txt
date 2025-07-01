@@ -1,4 +1,4 @@
-# Core web framework
+
 fastapi
 uvicorn
 
@@ -13,13 +13,14 @@ langchain
 langchain_community
 langchain_google_genai
 langchain-huggingface
-openai>=1.0.0
+
 
 
 # Data processing
 pandas
-
+numpy
 pypdf
+scikit-learn
 docx2txt
 
 pdfminer.six 
