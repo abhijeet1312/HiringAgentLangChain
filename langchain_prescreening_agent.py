@@ -7,7 +7,7 @@ from langchain_community.chat_models import ChatOllama
 import traceback
 from langchain.chains import LLMChain
 from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain_google_genai import ChatGoogleGenerativeAI
+
 import warnings
 from requests.auth import HTTPBasicAuth
 warnings.filterwarnings("ignore")
@@ -33,21 +33,26 @@ load_dotenv()
 class PreScreeningAgent:
     def __init__(self):
         # Initialize LLM
-        self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash",
-            api_key=os.getenv("GOOGLE_API_KEY"),
-            temperature=0.1
-        )
+       
         
         # Initialize Azure OpenAI client for Whisper
-        self.azure_openai_client = AzureOpenAI(
+        self.whisper_client = AzureOpenAI(
             api_key=os.getenv("AZURE_OPENAI_API_KEY"),  
             api_version="2024-02-01",
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT")
         )
+        self.gpt_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version="2024-02-01",
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_CHAT")   
+        )
         
         # Your Whisper deployment name in Azure OpenAI
         self.whisper_deployment_id = os.getenv("AZURE_WHISPER_DEPLOYMENT", "whisper-1")
+        
+        
+          # Your chat completion deployment name in Azure OpenAI
+        self.chat_deployment_id = "gpt-4.1-2"
         
         self.memory = ConversationBufferMemory(memory_key="chat_history")
         
@@ -72,80 +77,203 @@ class PreScreeningAgent:
         
         # Create agent
         self.agent = self._create_agent()
-    def _create_agent(self):
-        prompt_template = """
-        You are an AI recruitment assistant specializing in candidate pre-screening.
+    # def _create_agent(self):
+    #     prompt_template = """
+    #     You are an AI recruitment assistant specializing in candidate pre-screening.
         
-        Available tools: {tools}
-        Tool names: {tool_names}
+    #     Available tools: {tools}
+    #     Tool names: {tool_names}
         
-        Current conversation:
-        {chat_history}
+    #     Current conversation:
+    #     {chat_history}
         
-        Human: {input}
+    #     Human: {input}
         
-        Think step by step:
-        Thought: I need to understand what the human wants
-        Action: [tool_name]
-        Action Input: [input_to_tool]
-        Observation: [result_from_tool]
-        ... (repeat Thought/Action/Action Input/Observation as needed)
-        Thought: I now know the final answer
-        Final Answer: [final_response]
+    #     Think step by step:
+    #     Thought: I need to understand what the human wants
+    #     Action: [tool_name]
+    #     Action Input: [input_to_tool]
+    #     Observation: [result_from_tool]
+    #     ... (repeat Thought/Action/Action Input/Observation as needed)
+    #     Thought: I now know the final answer
+    #     Final Answer: [final_response]
         
-        {agent_scratchpad}
-        """
+    #     {agent_scratchpad}
+    #     """
         
-        class CustomPromptTemplate(StringPromptTemplate):
-            template: str
-            tools: List[Tool]
+    #     class CustomPromptTemplate(StringPromptTemplate):
+    #         template: str
+    #         tools: List[Tool]
             
-            def format(self, **kwargs) -> str:
-                kwargs['tools'] = '\n'.join([f"{tool.name}: {tool.description}" for tool in self.tools])
-                kwargs['tool_names'] = ', '.join([tool.name for tool in self.tools])
-                return self.template.format(**kwargs)
+    #         def format(self, **kwargs) -> str:
+    #             kwargs['tools'] = '\n'.join([f"{tool.name}: {tool.description}" for tool in self.tools])
+    #             kwargs['tool_names'] = ', '.join([tool.name for tool in self.tools])
+    #             return self.template.format(**kwargs)
         
-        prompt = CustomPromptTemplate(
-            template=prompt_template,
-            tools=self.tools,
-            input_variables=["input", "chat_history", "agent_scratchpad"]
-        )
-        llm_chain = LLMChain(llm=self.llm, prompt=prompt)
+    #     prompt = CustomPromptTemplate(
+    #         template=prompt_template,
+    #         tools=self.tools,
+    #         input_variables=["input", "chat_history", "agent_scratchpad"]
+    #     )
+    #     llm_chain = LLMChain(llm=self.llm, prompt=prompt)
         
-        return LLMSingleActionAgent(
-            llm_chain=llm_chain,
-            output_parser=ReActSingleInputOutputParser(),
-            prompt=prompt,
-            stop=["\nObservation:"],
-            allowed_tools=[tool.name for tool in self.tools]
-        )
+    #     return LLMSingleActionAgent(
+    #         llm_chain=llm_chain,
+    #         output_parser=ReActSingleInputOutputParser(),
+    #         prompt=prompt,
+    #         stop=["\nObservation:"],
+    #         allowed_tools=[tool.name for tool in self.tools]
+    #     )
+    
+    
+    def _create_agent(self):
+     from langchain_core.language_models.llms import LLM
+     from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+     from typing import Optional, List, Any
+    
+     prompt_template = """
+     You are an AI recruitment assistant specializing in candidate pre-screening.
+    
+     Available tools: {tools}
+     Tool names: {tool_names}
+    
+     Current conversation:
+     {chat_history}
+    
+     Human: {input}
+    
+     Think step by step:
+     Thought: I need to understand what the human wants
+     Action: [tool_name]
+     Action Input: [input_to_tool]
+     Observation: [result_from_tool]
+     ... (repeat Thought/Action/Action Input/Observation as needed)
+     Thought: I now know the final answer
+     Final Answer: [final_response]
+    
+     {agent_scratchpad}
+     """
+    
+     class CustomPromptTemplate(StringPromptTemplate):
+        template: str
+        tools: List[Tool]
+        
+        def format(self, **kwargs) -> str:
+            kwargs['tools'] = '\n'.join([f"{tool.name}: {tool.description}" for tool in self.tools])
+            kwargs['tool_names'] = ', '.join([tool.name for tool in self.tools])
+            return self.template.format(**kwargs)
+    
+     # Create a proper LangChain LLM wrapper for Azure OpenAI
+     from pydantic import Field
+
+     class AzureOpenAILLM(LLM):
+      client: Any = Field(...)
+      deployment_id: str = Field(...)
+
+      @property
+      def _llm_type(self) -> str:
+        return "azure_openai"
+
+      def _call(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+      ) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.deployment_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Azure OpenAI API error: {e}")
+            return "Error: Unable to generate response"
+
+     prompt = CustomPromptTemplate(
+        template=prompt_template,
+        tools=self.tools,
+        input_variables=["input", "chat_history", "agent_scratchpad"]
+     )
+    
+    #  azure_llm = AzureOpenAILLM(self.azure_openai_client, self.chat_deployment_id)
+     azure_llm = AzureOpenAILLM(
+     client=self.gpt_client,
+     deployment_id="gpt-4.1-2"  # Use your actual chat deployment ID here
+     )
+     llm_chain = LLMChain(llm=azure_llm, prompt=prompt)
+    
+     return LLMSingleActionAgent(
+        llm_chain=llm_chain,
+        output_parser=ReActSingleInputOutputParser(),
+        prompt=prompt,
+        stop=["\nObservation:"],
+        allowed_tools=[tool.name for tool in self.tools]
+    )
+    # def generate_screening_questions(self, job_description: str) -> List[str]:
+        
+    #     """Generate job-specific screening questions using free local LLM"""
+        
+    #     prompt = f"""
+    #     Generate exactly 2 specific screening questions for this job:
+        
+    #     Job Description: {job_description}
+        
+    #     Questions should be:
+    #     1. Technical/skill-based
+    #     2. Experience-focused
+    #     3. Scenario-based
+        
+    #     Format: Return only questions, one per line.
+    #     """
+    #     # print(prompt)
+    #     response = self.llm.invoke(prompt)
+    #     # print(response)
+    #     # questions = [q.strip() for q in response.split('\n') if q.strip()]
+    #     questions = [q.strip() for q in response.content.split('\n') if q.strip()]
+
+    #     # print(questions)
+    #     return questions[:3]  # Ensure exactly 3 questions
     
     def generate_screening_questions(self, job_description: str) -> List[str]:
+     """Generate job-specific screening questions using Azure OpenAI"""
+    
+     prompt = f"""
+     Generate exactly 2 specific screening questions for this job:
+    
+     Job Description: {job_description}
+    
+     Questions should be:
+     1. Technical/skill-based
+     2. Experience-focused
+     3. Scenario-based
+    
+     Format: Return only questions, one per line.
+     """
+    
+     try:
+        response = self.gpt_client.chat.completions.create(
+            model=self.chat_deployment_id,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=500
+        )
         
-        """Generate job-specific screening questions using free local LLM"""
-        
-        prompt = f"""
-        Generate exactly 2 specific screening questions for this job:
-        
-        Job Description: {job_description}
-        
-        Questions should be:
-        1. Technical/skill-based
-        2. Experience-focused
-        3. Scenario-based
-        
-        Format: Return only questions, one per line.
-        """
-        # print(prompt)
-        response = self.llm.invoke(prompt)
-        # print(response)
-        # questions = [q.strip() for q in response.split('\n') if q.strip()]
-        questions = [q.strip() for q in response.content.split('\n') if q.strip()]
-
-        # print(questions)
+        response_text = response.choices[0].message.content
+        questions = [q.strip() for q in response_text.split('\n') if q.strip()]
         return questions[:3]  # Ensure exactly 3 questions
-    
-    
+        
+     except Exception as e:
+        print(f"Error generating questions: {e}")
+        return [
+            "Tell me about your relevant experience for this role.",
+            "Describe a challenging project you've worked on.",
+            "How do you stay updated with industry trends?"
+        ]
+
     
     def trigger_twilio_call(self, candidate: Dict, questions: List[str], chat_id: str) -> Dict:
       """Call candidate with questions passed directly in URL parameters."""
@@ -232,11 +360,7 @@ class PreScreeningAgent:
 
             print(f"📊 Downloaded {len(audio_content)} bytes of audio data")
 
-            # # Create a temporary file for Azure OpenAI API
-            # with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio_file:
-            #     temp_audio_file.write(audio_content)
-            #     temp_audio_file_path = temp_audio_file.name
-            # Create BytesIO object instead of temporary file
+          
             audio_buffer = io.BytesIO(audio_content)
             audio_buffer.name = "audio.wav"  # Required for OpenAI API
             
@@ -246,7 +370,7 @@ class PreScreeningAgent:
                 print("🎤 Transcribing audio with Azure OpenAI...")
                 
                 # with open(temp_audio_file_path, "rb") as audio_file:
-                result = self.azure_openai_client.audio.transcriptions.create(
+                result = self.whisper_client.audio.transcriptions.create(
                         file=audio_buffer,
                         model=self.whisper_deployment_id,
                         language="en"  # Optional: specify language
@@ -264,107 +388,86 @@ class PreScreeningAgent:
             print(f"Error type: {type(e).__name__}")
             return ""
 
-    # def transcribe_audio(self, audio_url: str) -> str:
-    #    """Transcribe audio without creating temporary files"""
-    #    print("Starting audio transcription...")
-    
-    #    try:
-    #     # Validate URL
-    #     import librosa
-    #     import numpy as np
-    #     import os
-    #     import io
-    #     if not audio_url.startswith("http"):
-    #         raise ValueError(f"Invalid audio URL: {audio_url}")
-
-    #     # Download audio data
-    #     print("Downloading audio...")
-    #     audio_response = requests.get(
-    #         audio_url,
-    #         auth=HTTPBasicAuth(
-    #             os.getenv("TWILIO_ACCOUNT_SID"), 
-    #             os.getenv("TWILIO_AUTH_TOKEN")
-    #         )
-    #     )
-        
-    #     if audio_response.status_code != 200:
-    #         raise ValueError(f"Failed to download audio: {audio_response.status_code}")
-
-    #     # Check if we got valid audio data
-    #     audio_content = audio_response.content
-    #     if len(audio_content) < 100:
-    #         raise ValueError(f"Audio data too small ({len(audio_content)} bytes) - likely corrupted or empty")
-
-    #     print(f"📊 Downloaded {len(audio_content)} bytes of audio data")
-
-    #     # Process audio directly in memory using BytesIO
-    #     print("🎵 Processing audio in memory...")
-        
-    #     # Create a file-like object from the audio bytes
-    #     audio_buffer = io.BytesIO(audio_content)
-        
-    #     # Load audio with librosa directly from memory
-    #     # librosa can handle BytesIO objects
-    #     audio_data, sample_rate = librosa.load(audio_buffer, sr=16000)  # Whisper expects 16kHz
-        
-    #     print(f"✅ Audio loaded: {len(audio_data)} samples at {sample_rate}Hz")
-
-    #     # Ensure whisper_model is properly initialized
-    #     if not hasattr(self, 'whisper_model') or self.whisper_model is None:
-    #         raise AttributeError("Whisper model not initialized")
-
-    #     # Transcribe using the numpy array directly
-    #     print("🎤 Transcribing audio...")
-    #     result = self.whisper_model.transcribe(audio_data)
-        
-    #     print("✅ Transcription completed successfully!")
-    #     return result["text"].strip()
-
-    #    except Exception as e:
-    #     print(f"❌ Transcription error: {e}")
-    #     print(f"Error type: {type(e).__name__}")
-    #     return ""
-
-      
     def evaluate_answer(self, question: str, answer: str) -> float:
-        """Evaluate answer using free local LLM"""
-        print("inside evaluate answer")
-        if not answer.strip():
-            return 0.0
+     """Evaluate answer using Azure OpenAI"""
+     print("inside evaluate answer")
+     if not answer.strip():
+        return 0.0
+    
+     prompt = f"""
+     Evaluate this interview answer on a scale of 0-10:
+    
+     Question: {question}
+     Answer: {answer}
+    
+     Consider:
+     - Relevance to question
+     - Technical accuracy
+     - Communication clarity
+     - Experience depth
+    
+     Return only a number between 0-10:
+     """
+    
+     try:
+        response = self.gpt_client.chat.completions.create(
+            model=self.chat_deployment_id,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=100
+        )
         
-        prompt = f"""
-        Evaluate this interview answer on a scale of 0-10:
+        response_text = response.choices[0].message.content
+        print("response of question and answer", response_text)
         
-        Question: {question}
-        Answer: {answer}
+        # Extract number from response
+        score_str = ''.join(filter(str.isdigit, response_text.split()[0]))
+        score = float(score_str) if score_str else 0.0
+        return min(max(score, 0.0), 10.0)  # Clamp between 0-10
         
-        Consider:
-        - Relevance to question
-        - Technical accuracy
-        - Communication clarity
-        - Experience depth
+     except Exception as e:
+        print(f"Error evaluating answer: {e}")
+        return 0.0
+      
+    # def evaluate_answer(self, question: str, answer: str) -> float:
+    #     """Evaluate answer using free local LLM"""
+    #     print("inside evaluate answer")
+    #     if not answer.strip():
+    #         return 0.0
         
-        Return only a number between 0-10:
-        """
+    #     prompt = f"""
+    #     Evaluate this interview answer on a scale of 0-10:
         
-        response = self.llm.invoke(prompt)
-        print("response of question and answer",response)
+    #     Question: {question}
+    #     Answer: {answer}
         
-        # Extract the actual content (the string '6', for example)
-        if hasattr(response, "content"):
-          answer_text = response.content
-        else:
-          answer_text = str(response)  # fallback
+    #     Consider:
+    #     - Relevance to question
+    #     - Technical accuracy
+    #     - Communication clarity
+    #     - Experience depth
+        
+    #     Return only a number between 0-10:
+    #     """
+        
+    #     response = self.llm.invoke(prompt)
+    #     print("response of question and answer",response)
+        
+    #     # Extract the actual content (the string '6', for example)
+    #     if hasattr(response, "content"):
+    #       answer_text = response.content
+    #     else:
+    #       answer_text = str(response)  # fallback
         
         
         
-        try:
-            # Extract number from response
-            score_str = ''.join(filter(str.isdigit, answer_text.split()[0]))
-            score = float(score_str) if score_str else 0.0
-            return min(max(score, 0.0), 10.0)  # Clamp between 0-10
-        except:
-            return 0.0
+    #     try:
+    #         # Extract number from response
+    #         score_str = ''.join(filter(str.isdigit, answer_text.split()[0]))
+    #         score = float(score_str) if score_str else 0.0
+    #         return min(max(score, 0.0), 10.0)  # Clamp between 0-10
+    #     except:
+    #         return 0.0
     
 #    
     def wait_for_responses(self, session_id: str, num_questions: int, timeout: int = 300, webhook_base_url: str = "https://newaiprescreeningwebhook-dkcxc6d5e9ame4a2.centralindia-01.azurewebsites.net"):
@@ -683,251 +786,3 @@ if __name__ == "__main__":
     
     
     
-
-
-
-
-
-
- #def wait_for_responses(self, candidate_id: int, num_questions: int, timeout: int = 300):
-#       """Wait for webhook responses with timeout (5 minutes)"""
-#       start_time = time.time()
-#       responses = []
-#       received = set()
-    
-#      # Add current working directory info for debugging
-#       current_dir = os.getcwd()
-#       print(f"🔍 Looking for files in: {current_dir}")
-#       print(f"⏳ Waiting for {num_questions} response files for candidate {candidate_id}...")
-
-#       while len(responses) < num_questions and (time.time() - start_time) < timeout:
-#         # Show progress every 30 seconds
-#         elapsed = time.time() - start_time
-#         if int(elapsed) % 30 == 0 and elapsed > 0:
-#             print(f"⏰ Still waiting... {elapsed:.0f}s elapsed, {len(responses)}/{num_questions} responses received")
-        
-#         # Check for all response files
-#         for i in range(1, num_questions + 1):
-#             if i in received:
-#                 continue
-
-#             response_file = f"responses_{candidate_id}_q{i}.json"
-            
-#             if os.path.exists(response_file):
-#                 print(f"📥 Found: {response_file}")
-                
-#                 # Add a small delay to ensure file is fully written
-#                 time.sleep(0.1)
-                
-#                 try:
-#                     with open(response_file, 'r') as f:
-#                         response_data = json.load(f)
-                    
-#                     # Validate the response data
-#                     if not response_data.get('audio_url'):
-#                         print(f"⚠️ Invalid response data in {response_file}: missing audio_url")
-#                         continue
-                    
-#                     responses.append(response_data)
-#                     received.add(i)
-                    
-#                     print(f"✅ Processed: {response_file} (Question {i})")
-                    
-#                     # Don't delete the file immediately - keep for debugging
-#                     # You can uncomment this line later:
-#                     os.remove(response_file)
-                    
-#                 except Exception as e:
-#                     print(f"❌ Error reading {response_file}: {e}")
-#                     import traceback
-#                     traceback.print_exc()
-
-#         time.sleep(2)  # Check every 2 seconds
-
-#      # Final summary
-#       if len(responses) < num_questions:
-#         print(f"⚠️ Timeout reached after {timeout}s. Only received {len(responses)} of {num_questions} responses.")
-        
-#         # List any files that exist but weren't processed
-#         all_response_files = [f for f in os.listdir('.') if f.startswith(f'responses_{candidate_id}_')]
-#         if all_response_files:
-#             print(f"🔍 Found these response files: {all_response_files}")
-#       else:
-#         print(f"✅ Successfully received all {num_questions} responses for candidate {candidate_id}")
-
-#       return responses
-
-
-
-
-    # def transcribe_audio(self, audio_url: str) -> str:
-    #   print("inside transcribe audio")
-    #   temp_file = None
-    #   try:
-    #     if not audio_url.startswith("http"):
-    #         raise ValueError(f"Invalid audio URL: {audio_url}")
-
-    #     audio_response = requests.get(
-    #         audio_url,
-    #         auth=HTTPBasicAuth(os.getenv("TWILIO_ACCOUNT_SID"), os.getenv("TWILIO_AUTH_TOKEN"))
-    #     )
-    #     print("jai mata di ")
-        
-    #     if audio_response.status_code != 200:
-    #         raise ValueError(f"Failed to download audio: {audio_response.status_code}")
-
-    #     # Use absolute path and unique filename
-    #     import uuid
-    #     script_dir = os.path.dirname(os.path.abspath(__file__))
-    #     temp_filename = f"temp_audio_{uuid.uuid4().hex[:8]}.mp3"
-    #     temp_file = os.path.join(script_dir,temp_filename)
-        
-    #     print(f"📁 Saving audio to: {temp_file}")
-        
-    #     with open(temp_file, "wb") as f:
-    #         f.write(audio_response.content)
-    #         f.flush() #ensure data is written to disk
-    #         os.fsync(f.fileno()) # force write to disk
-        
-    #     # Verify file was written
-    #     if not os.path.exists(temp_file):
-    #         raise FileNotFoundError(f"Failed to create temporary file: {temp_file}")
-            
-    #     file_size = os.path.getsize(temp_file)
-    #     print(f"📊 File size: {file_size} bytes")
-        
-    #     if file_size < 100:  # Reduced minimum size threshold
-    #         raise ValueError(f"Audio file too small ({file_size} bytes) - likely corrupted or empty")
-
-    #     time.sleep(5)
-    #     print(f"🎵 Transcribing: {temp_file}")
-        
-    #     # Triple-check file exists before transcription with detailed debug info
-    #     # print(f'Current working directory: {os.getcwd()}')
-    #     print(f'Script directory: {script_dir}')
-    #     print(f'Temp file path: {temp_file}')
-    #     print(f'Temp file absolute path: {os.path.abspath(temp_file)}')
-    #     print(f'File exists: {os.path.exists(temp_file)}')
-        
-    #     # Double-check file exists before transcription
-    #     # print('ospath',os.path)
-    #     if not os.path.exists(temp_file):
-    #         print('file not found in os path')
-    #         raise FileNotFoundError(f"Temporary file disappeared: {temp_file}")
-        
-    #     # Ensure whisper_model is properly initialized
-    #     if not hasattr(self, 'whisper_model') or self.whisper_model is None:
-    #         raise AttributeError("Whisper model not initialized")
-    #     print("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-           
-    #     abs_temp_file = os.path.abspath(temp_file)
-    #     print(f"Using absolute path for transcription: {abs_temp_file}")
-        
-        
-    #     try:
-    #         print("🎤 Attempting direct audio loading with librosa...")
-    #         import librosa
-    #         import numpy as np
-                
-    #             # Save to temp file first
-    #         direct_temp_file = os.path.join(os.getcwd(), f"direct_{uuid.uuid4().hex[:6]}.mp3")
-                
-    #         with open(direct_temp_file, "wb") as f:
-    #              f.write(audio_response.content)
-    #              f.flush()
-    #              os.fsync(f.fileno())
-                
-    #             # Load audio with librosa
-    #         audio_data, sr = librosa.load(direct_temp_file, sr=16000)  # Whisper expects 16kHz
-                
-    #             # Clean up temp file immediately
-    #         if os.path.exists(direct_temp_file):
-    #                 os.remove(direct_temp_file)
-                
-    #             # Pass numpy array directly to Whisper
-    #         result = self.whisper_model.transcribe(audio_data)
-    #         print("✅ Direct audio loading successful!")
-                
-    #     except Exception as direct_audio_error:
-    #          print(f"❌ Direct audio loading failed: {direct_audio_error}")
-        
-        
-        
-       
-    #     print("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB")
-        
-    #     if temp_file and os.path.exists(temp_file):
-    #         os.remove(temp_file)
-    #         print(f"🗑️ Cleaned up temporary file: {temp_file}")
-            
-    #     return result["text"].strip()
-
-    #   except Exception as e:
-    #     print(f"Transcription error: {e}")
-    #     print(f"Error type: {type(e).__name__}")
-        
-        
-    #     # Additional debugging info
-    #     if temp_file:
-    #         print(f"Debug - temp_file variable: {temp_file}")
-    #         print(f"Debug - temp_file exists: {os.path.exists(temp_file)}")
-    #         print(f"Debug - temp_file absolute: {os.path.abspath(temp_file)}")
-        
-    #     # Clean up temp file if it exists
-    #     if temp_file and os.path.exists(temp_file):
-    #         try:
-    #             os.remove(temp_file)
-    #             print(f"🗑️ Cleaned up temporary file after error: {temp_file}")
-    #         except Exception as cleanup_error:
-    #             print(f"Failed to cleanup temp file: {cleanup_error}")
-        
-    #     return ""
-
-
-    # def trigger_twilio_call(self, candidate: Dict, questions: List[str], chat_id: str) -> Dict:
-    #     """Trigger Twilio call with dynamic IVR based on candidate and questions."""
-
-    #     account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    #     auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    #     client = Client(account_sid, auth_token)
-
-    #     candidate_id = candidate.get("id")
-    #  # candidate_phone = candidate.get("phone")  # Ensure candidate dict has 'phone'
-    #     candidate_phone ="+918887596182"  # Ensure candidate dict has 'phone'
-
-    #     if not candidate_id or not candidate_phone:
-    #      return {"success": False, "error": "Candidate ID or phone missing"}
-
-    #  # Save questions to temp file for IVR to read
-    #     try:
-    #      ## Save questions to Supabase screening table
-    #        screening_data = {
-    #         "chat_id": chat_id,
-    #         "employer_id": candidate.get("employer_id"),  # If available
-    #         "questions": questions,
-    #         "responses": [],
-    #         "step": "calling",
-    #         }
-           
-    #      # Insert or update screening data
-    #        result = supabase.table("screening").upsert(screening_data).execute()
-    #        time.sleep(5)
-    #        if not result.data:
-    #         return {"success": False, "error": "Failed to save screening data"}
-
-    #        # Trigger the outbound call via Twilio
-           
-    #        call = client.calls.create(
-    #         from_="+17178825763",  # your verified Twilio number
-    #         to=candidate_phone,   # dynamic recipient
-    #         url=f"https://91a3-2402-e280-217b-863-3c6d-2a-da55-9ecf.ngrok-free.app/voice/{chat_id}/{candidate_id}"  # webhook URL
-    #          )
-        
-    #        print(f"Call initiated: {call.sid}")
-    #        return {"success": True, "call_sid": call.sid, "chat_id": chat_id}
-
-        
-            
-
-    #     except Exception as e:
-    #       return {"success": False, "error": str(e)}

@@ -6,12 +6,10 @@ from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 load_dotenv()
 
-API_KEY = os.getenv("GOOGLE_API_KEY")
 from jai import send_bulk_email 
-print(API_KEY)
+
 import json
 from huggingface_hub import InferenceClient
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.output_parsers import PydanticOutputParser
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
@@ -21,6 +19,12 @@ from langchain_huggingface import HuggingFaceEndpoint
 from langchain_core.runnables import RunnableSequence
 from pydantic import BaseModel, Field, field_validator
 
+from langchain_core.language_models.llms import LLM
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from typing import Any, Optional, List
+from pydantic import Field
+
+
 from sklearn.cluster import KMeans
 import numpy as np
 import pandas as pd
@@ -28,6 +32,7 @@ from typing import List, Dict, Any
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, TextLoader
 import pandas as pd
+from openai import AzureOpenAI
 load_dotenv()
 # api_token = os.getenv("HUGGINGFACEHUB_API_TOKEN")
 # print(api_token)
@@ -63,6 +68,33 @@ class CandidateAssessment(BaseModel):
             raise ValueError(f'Recommendation must be one of: {", ".join(valid_recommendations)}')
         return v
 
+class AzureOpenAILLM(LLM):
+    client: Any = Field(...)
+    deployment_id: str = Field(...)
+
+    @property
+    def _llm_type(self) -> str:
+        return "azure_openai"
+
+    def _call(
+        self,
+        prompt: str,
+        stop: Optional[List[str]] = None,
+        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        **kwargs: Any,
+    ) -> str:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.deployment_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1500
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"Azure OpenAI API error: {e}")
+            return "Error: Unable to generate response"
+
 class CandidateScreeningAgent:
     """Agent for screening job candidates using local LLMs"""
     
@@ -70,20 +102,24 @@ class CandidateScreeningAgent:
 
     def __init__(self, job_description: str):
         """
-        Initialize the screening agent using Google Gemini.
+        Initialize the screening agent using Azure OpenAI .
 
         Args:
             job_description: The job description to screen candidates against
         """
         self.job_description = job_description
 
-        # Use Google Gemini (gemini-pro)
-        self.llm = ChatGoogleGenerativeAI(
-            model="models/gemini-2.0-flash",
-            api_key=API_KEY,
-            temperature=0.1
+        
+        self.gpt_client = AzureOpenAI(
+            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
+            api_version="2024-02-01",
+            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_CHAT")   
         )
-
+        self.chat_deployment_id = "gpt-4.1-2"
+        self.azure_llm = AzureOpenAILLM(
+        client=self.gpt_client,
+        deployment_id=self.chat_deployment_id
+        )
         self.output_parser = PydanticOutputParser(pydantic_object=CandidateAssessment)
          
 
@@ -185,7 +221,7 @@ Schema:
         
         #build new chain
         
-        chain= prompt | self.llm | self.output_parser 
+        chain= prompt | self.azure_llm | self.output_parser 
         result = None
         try:
             result =chain.invoke({
@@ -423,3 +459,95 @@ def extract_key_info_from_resume(resume_text: str) -> Dict[str, Any]:
         info["skills"] = [s for s in potential_skills if len(s) > 2 and s.lower() not in common_words]
     
     return info
+if __name__ == "__main__":
+    # Example job description
+    job_description = """
+    Software Engineer - Full Stack Developer
+    
+    Requirements:
+    - 3+ years of experience in web development
+    - Proficiency in Python, JavaScript, and React
+    - Experience with databases (SQL/NoSQL)
+    - Knowledge of cloud platforms (AWS, Azure, or GCP)
+    - Strong problem-solving skills
+    - Bachelor's degree in Computer Science or related field
+    
+    Responsibilities:
+    - Develop and maintain web applications
+    - Collaborate with cross-functional teams
+    - Write clean, maintainable code
+    - Participate in code reviews
+    """
+    
+    # Initialize the screening agent
+    print("🚀 Initializing Candidate Screening Agent...")
+    screening_agent = CandidateScreeningAgent(job_description)
+    
+    # Example resume paths (you can modify these)
+    resume_folder = "resumes"  # Create this folder and put resume files
+    
+    # Check if resume folder exists
+    if not os.path.exists(resume_folder):
+        print(f"❌ Resume folder '{resume_folder}' not found!")
+        print("Please create a 'resumes' folder and add resume files (.pdf, .docx, .txt)")
+        
+        # Create example with single resume file
+        print("\n📄 Testing with single resume file...")
+        resume_file = input("Enter path to a resume file (or press Enter to skip): ").strip()
+        
+        if resume_file and os.path.exists(resume_file):
+            print(f"Screening single candidate: {resume_file}")
+            try:
+                assessment = screening_agent.screen_candidate(resume_file)
+                if assessment:
+                    print(f"\n✅ Assessment Result:")
+                    print(f"Name: {assessment.candidate_name}")
+                    print(f"Overall Score: {assessment.overall_fit_score}/10")
+                    print(f"Recommendation: {assessment.recommendation}")
+                    print(f"Strengths: {', '.join(assessment.strengths)}")
+                    print(f"Weaknesses: {', '.join(assessment.weaknesses)}")
+                else:
+                    print("❌ Failed to assess candidate")
+            except Exception as e:
+                print(f"❌ Error: {e}")
+        else:
+            print("No valid resume file provided. Exiting.")
+            exit()
+    else:
+        # Get all resume files from the folder
+        resume_files = []
+        for file in os.listdir(resume_folder):
+            if file.lower().endswith(('.pdf', '.docx', '.txt')):
+                resume_files.append(os.path.join(resume_folder, file))
+        
+        if not resume_files:
+            print(f"❌ No resume files found in '{resume_folder}' folder!")
+            print("Please add resume files with extensions: .pdf, .docx, .txt")
+            exit()
+        
+        print(f"📋 Found {len(resume_files)} resume files")
+        for i, file in enumerate(resume_files, 1):
+            print(f"  {i}. {os.path.basename(file)}")
+        
+        # Batch screen all candidates
+        print("\n🔍 Starting batch screening...")
+        assessments = screening_agent.batch_screen_candidates(resume_files)
+        
+        # Generate report
+        print("\n📊 Generating report...")
+        qualified_data = screening_agent.generate_report(assessments)
+        
+        # Display results
+        print(f"\n✅ Screening completed!")
+        print(f"Total candidates screened: {len(assessments)}")
+        print(f"Qualified for voice interview: {qualified_data['total_qualified']}")
+        
+        if qualified_data['total_qualified'] > 0:
+            print("\n🎤 Qualified candidates:")
+            for candidate in qualified_data['qualified_candidates']:
+                print(f"  - {candidate['name']} (Score: {candidate['resume_score']}/10)")
+            
+            print("\nEmails sent to qualified candidates.")
+        
+        print(f"\n📄 Report saved to: candidate_assessments.csv")
+        print("🎯 Screening process completed!")
