@@ -90,6 +90,7 @@ class AzureOpenAILLM(LLM):
                 temperature=0.1,
                 max_tokens=1500
             )
+            print(">>> Azure OpenAI response:", response) 
             return response.choices[0].message.content
         except Exception as e:
             print(f"Azure OpenAI API error: {e}")
@@ -115,7 +116,7 @@ class CandidateScreeningAgent:
             api_version="2024-02-01",
             azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT_CHAT")   
         )
-        self.chat_deployment_id = "gpt-4.1-2"
+        self.chat_deployment_id = "gpt-35-turboo"  # Use your actual chat deployment ID here
         self.azure_llm = AzureOpenAILLM(
         client=self.gpt_client,
         deployment_id=self.chat_deployment_id
@@ -220,7 +221,6 @@ Schema:
         prompt = self.create_assessment_prompt(resume_text)
         
         #build new chain
-        
         chain= prompt | self.azure_llm | self.output_parser 
         result = None
         try:
