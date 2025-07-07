@@ -52,7 +52,7 @@ class PreScreeningAgent:
         
         
           # Your chat completion deployment name in Azure OpenAI
-        self.chat_deployment_id = "gpt-4.1-2"
+        self.chat_deployment_id = "gpt-35-turboo"
         
         self.memory = ConversationBufferMemory(memory_key="chat_history")
         
@@ -202,7 +202,7 @@ class PreScreeningAgent:
     #  azure_llm = AzureOpenAILLM(self.azure_openai_client, self.chat_deployment_id)
      azure_llm = AzureOpenAILLM(
      client=self.gpt_client,
-     deployment_id="gpt-4.1-2"  # Use your actual chat deployment ID here
+     deployment_id="gpt-35-turboo"  # Use your actual chat deployment ID here
      )
      llm_chain = LLMChain(llm=azure_llm, prompt=prompt)
     
@@ -213,30 +213,6 @@ class PreScreeningAgent:
         stop=["\nObservation:"],
         allowed_tools=[tool.name for tool in self.tools]
     )
-    # def generate_screening_questions(self, job_description: str) -> List[str]:
-        
-    #     """Generate job-specific screening questions using free local LLM"""
-        
-    #     prompt = f"""
-    #     Generate exactly 2 specific screening questions for this job:
-        
-    #     Job Description: {job_description}
-        
-    #     Questions should be:
-    #     1. Technical/skill-based
-    #     2. Experience-focused
-    #     3. Scenario-based
-        
-    #     Format: Return only questions, one per line.
-    #     """
-    #     # print(prompt)
-    #     response = self.llm.invoke(prompt)
-    #     # print(response)
-    #     # questions = [q.strip() for q in response.split('\n') if q.strip()]
-    #     questions = [q.strip() for q in response.content.split('\n') if q.strip()]
-
-    #     # print(questions)
-    #     return questions[:3]  # Ensure exactly 3 questions
     
     def generate_screening_questions(self, job_description: str) -> List[str]:
      """Generate job-specific screening questions using Azure OpenAI"""
