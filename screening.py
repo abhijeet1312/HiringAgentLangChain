@@ -353,7 +353,6 @@ Schema:
             #job desc current stage next stage
             current_stage="Resume Screening Phase"
             next_stage="Voice Interview Round"
-            email_recipients.append("abhijeetsrivastava2189@gmail.com")
             print(f"Sending emails to: {email_recipients}")
             # receiver.append("Aurjobsa@gmail.com")
             print(email_recipients)
