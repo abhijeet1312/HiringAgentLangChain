@@ -6,16 +6,21 @@ from langchain_openai import AzureChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
+# Job configuration
+# job_description = "For nodejs developer"
+# current_stage = "Prescreening"
+# next_stage = "Screening"
 
-
+# recipients=["abhijeetsrivastava2189@gmail.com"]
 def send_bulk_email(recipients, job_description, current_stage, next_stage):
     import smtplib
     import os
     from langchain_openai import AzureChatOpenAI
 
     # Email configuration
-    sender_email = os.getenv("ZOHOMAIL_EMAIL")
-    app_password = os.getenv("ZOHOMAIL_PASSWORD")
+    sender_email = os.getenv("SENDER_EMAIL")
+    app_password = os.getenv("SENDER_PASSWORD")
+    server_name=os.getenv("EMAIL_SERVER_NAME")
     
     # Azure OpenAI configuration
     azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT_CHAT")  # e.g., "https://your-resource.openai.azure.com/"
@@ -77,7 +82,7 @@ def send_bulk_email(recipients, job_description, current_stage, next_stage):
 
     # Send email
     try:
-        with smtplib.SMTP('smtp.zoho.in', 587) as server:
+        with smtplib.SMTP(server_name, 587) as server:
             server.starttls()
             server.login(sender_email, app_password)
             
@@ -89,3 +94,9 @@ def send_bulk_email(recipients, job_description, current_stage, next_stage):
     except Exception as e:
         print(f"Error sending email: {e}")
 
+# send_bulk_email(
+#     recipients=recipients, 
+#     job_description=job_description, 
+#     current_stage=current_stage, 
+#     next_stage=next_stage
+# )
