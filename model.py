@@ -91,12 +91,7 @@ async def upload_resumes(
                 detail=f"File size exceeds 5MB limit: {file.filename}"
             )
     
-    # Check file count limits
-    if len(resumes) > 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Maximum 10 resume files allowed"
-        )
+    
     
     uploaded_resume_urls = []
     
